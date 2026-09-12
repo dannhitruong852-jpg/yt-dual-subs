@@ -25,11 +25,11 @@
 }
 
 #ytds-overlay .ytds-orig {
-  top: var(--ytds-orig-y, 12%) !important;
+  top: var(--ytds-orig-y, 88%) !important;
 }
 
 #ytds-overlay .ytds-trans {
-  top: var(--ytds-trans-y, 88%) !important;
+  top: var(--ytds-trans-y, 12%) !important;
 }
 
 /* Whole-block dragging conflicts with independent per-line positions.
