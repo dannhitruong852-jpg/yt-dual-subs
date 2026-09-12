@@ -62,7 +62,10 @@
       ],
       "js": [
         "fonts.js",
+        "vocab-data.js",
+        "vocab-levels.js",
         "content.js",
+        "vocab-runtime.js",
         "independent-position.js"
       ],
       "css": [
