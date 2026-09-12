@@ -1,0 +1,35 @@
+name: Package stable position-only extension
+
+on:
+  push:
+    branches:
+      - stable-position-only-package
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify position-only baseline
+        run: |
+          test -f independent-position.js
+          test -f independent-position.css
+          test ! -f vocab-runtime.js
+          test ! -f vocab-levels.js
+          grep -q 'independent-position.js' manifest.json
+          grep -q 'independent-position.css' manifest.json
+      - name: Build Chrome ZIP
+        run: |
+          mkdir -p dist/yt-dual-subs-position-only
+          rsync -a ./ dist/yt-dual-subs-position-only/ \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'dist'
+          cd dist
+          zip -qr yt-dual-subs-position-only-chrome.zip yt-dual-subs-position-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yt-dual-subs-position-only-chrome
+          path: dist/yt-dual-subs-position-only-chrome.zip
+          retention-days: 90
