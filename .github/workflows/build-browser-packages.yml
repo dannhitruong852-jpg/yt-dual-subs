@@ -1,0 +1,73 @@
+name: Build Chrome and Safari packages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-zips:
+    name: Chrome and Safari ZIPs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run regression tests
+        run: |
+          node tests/independent-position.test.js
+          node tests/browser-packages.test.mjs
+      - name: Build browser folders
+        run: node scripts/build-browser-packages.mjs
+      - name: Create ZIP packages
+        run: |
+          (cd dist/chrome && zip -qr ../yt-dual-subs-chrome.zip .)
+          (cd dist/safari && zip -qr ../yt-dual-subs-safari.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension-packages
+          path: |
+            dist/yt-dual-subs-chrome.zip
+            dist/yt-dual-subs-safari.zip
+          if-no-files-found: error
+
+  safari-xcode:
+    name: Safari Xcode projects
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build Safari resources
+        run: node scripts/build-browser-packages.mjs
+      - name: Package macOS and iOS Safari projects
+        run: |
+          if xcrun --find safari-web-extension-packager >/dev/null 2>&1; then
+            PACKAGER=safari-web-extension-packager
+          else
+            PACKAGER=safari-web-extension-converter
+          fi
+          xcrun "$PACKAGER" dist/safari \
+            --project-location "$PWD/dist/safari-macos" \
+            --app-name "YT Dual Subs" \
+            --bundle-identifier "com.dannhitruong852.ytdualsubs.macos" \
+            --swift --copy-resources --no-open --no-prompt --force --macos-only
+          xcrun "$PACKAGER" dist/safari \
+            --project-location "$PWD/dist/safari-ios" \
+            --app-name "YT Dual Subs" \
+            --bundle-identifier "com.dannhitruong852.ytdualsubs.ios" \
+            --swift --copy-resources --no-open --no-prompt --force --ios-only
+          ditto -c -k --sequesterRsrc --keepParent dist/safari-macos dist/yt-dual-subs-safari-macos-xcode.zip
+          ditto -c -k --sequesterRsrc --keepParent dist/safari-ios dist/yt-dual-subs-safari-ios-xcode.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safari-xcode-projects
+          path: |
+            dist/yt-dual-subs-safari-macos-xcode.zip
+            dist/yt-dual-subs-safari-ios-xcode.zip
+          if-no-files-found: error
