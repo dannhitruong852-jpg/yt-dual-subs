@@ -1,81 +1,16 @@
-// vocab-levels.js — local vocabulary difficulty classifier + alignment markers.
-// Project-specific 1–9 scale. Level 5+ is considered advanced for bolding.
+// vocab-levels.js — local vocabulary difficulty classifier.
+// Project-specific 1–9 scale. Level 5+ is highlighted.
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root || globalThis);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.YTDS_VOCAB = api;
-})(typeof self !== 'undefined' ? self : globalThis, function () {
+})(typeof self !== 'undefined' ? self : globalThis, function (root) {
   'use strict';
 
-  const LEVEL_BOLD_MIN = 5;
-
-  const LEVELS = Object.create(null);
-  function add(level, words) {
-    for (const w of words.split(/\s+/)) if (w) LEVELS[w] = level;
-  }
-
-  // Level 4: common general-English vocabulary. The native-frequency correction
-  // matters here: a learner can find a word awkward without the word itself
-  // belonging to the advanced band.
-  add(4, `awkward achieve affect approach attitude benefit challenge compare concern
-    context decline establish evidence feature function increase issue maintain occur
-    require respond strategy available average career claim factor impact individual
-    involve information education experience important different possible relationship
-    development environment government community technology understand question language
-    business university difficult international organization conversation opportunity
-    situation necessary especially actually probably usually together although however
-    therefore`);
-
-  // Level 5 starts at the exact boundary approved for this product: upper-B2 /
-  // CET-6-core reading friction. These calibration anchors must stay >= 5.
-  add(5, `consider despite determine essential estimate eventually frequent identify
-    indicate influence likely major method obvious participate particular potential
-    previous primary provide range reduce significant similar source specific standard
-    suggest tend various abstract acknowledge adequate advocate allocate ambiguous
-    arbitrary coherent competent comprehensive conventional crucial derive diminish
-    ethical legitimate preliminary reluctant subtle sustain valid vulnerable compel
-    controversial distort reinforce accumulate adjacent analogy anticipate apparent
-    approximate attain attribute cease clarify coincide compile conceive concurrent
-    constrain contradict convert correlate deduce demonstrate deviate discrete dispose
-    diverse domestic eliminate emerge encounter enhance equivalent explicit facilitate
-    finite flexible framework fundamental generate hypothesis illustrate imply incentive
-    incidence inevitable infer inhibit initial inspect integrate intermediate interpret
-    intervene isolate justify manipulate mature maximize minimize modify monitor
-    objective obtain orient persist predominant prohibit promote proportion prospect
-    refine regulate relevant rely restrict retain reveal revise rigid scope sector
-    specify stable statistic substitute subsequent sufficient suspend transform
-    transmit trend ultimate undergo uniform utilize visible welfare whereas acquire
-    acquisition adverse adversity allegation alliance altitude ambassador amplify
-    analogy anxiety appeal applicant aspiration assault assemble assertion assumption
-    assurance astonishing astronomy attendance attentive atypical audit authorize await`);
-
-  add(6, `exacerbate empirical intrinsic fluctuate mitigate paradigm plausible
-    profound salient scrutinize undermine unprecedented ubiquitous nuanced
-    reconcile inherent indispensable tentative robust pervasive viable articulate
-    autonomous cumulative deteriorate differentiate discrepancy dynamic elaborate
-    encompass entail exploit formulation hierarchy holistic impartial implicit
-    impose induce innovative integral interaction invoke mechanism methodology
-    offset persistent prerequisite qualitative quantitative rational resilient
-    rigorous sophisticated subordinate synthesize trajectory transparent
-    validate volatility marginalize convergence divergence susceptibility
-    disproportionate interoperability sustainability`);
-
-  add(7, `ameliorate anachronistic antithetical circumvent corroborate deleterious
-    delineate dichotomy disseminate eclectic elucidate equivocal esoteric
-    extrapolate idiosyncratic immutable incongruous incontrovertible latent
-    meticulous ostensibly paradoxical pragmatic propensity quintessential
-    recalcitrant sporadic stringent substantive superfluous tacit tenuous
-    unequivocal vindicate heterogeneity homogeneity ramifications
-    epistemic heuristic orthogonal granular canonical endogenous exogenous`);
-
-  add(8, `abstruse acerbic capricious cogent didactic fastidious iconoclast
-    ineffable insidious laconic magnanimous mendacious obfuscate parsimonious
-    perfunctory perspicacious recondite sagacious trenchant vacuous vicissitude
-    polemical protean inchoate sycophantic`);
-
-  add(9, `epistemological phenomenological hermeneutic ontological teleological
-    phylogenetic psychometric heteroscedasticity metacognitive neuroplasticity
-    deontological axiomatic jurisprudential`);
+  const DATA = (root && root.YTDS_VOCAB_DATA) || { levels: Object.create(null), zh: Object.create(null) };
+  const LEVEL_HIGHLIGHT_MIN = 5;
+  const LEVEL_BOLD_MIN = LEVEL_HIGHLIGHT_MIN; // temporary compatibility alias until old tests are removed
+  const LEVELS = DATA.levels || Object.create(null);
 
   const IRREGULAR = Object.freeze({
     went: 'go', gone: 'go', gave: 'give', given: 'give', took: 'take', taken: 'take',
@@ -86,7 +21,7 @@
   });
 
   const ACADEMIC_SUFFIX = /(?:ability|ibility|ization|isation|ological|ometric|escence|ential|ative|atory|ivity|ality|istic|ously|iveness)$/;
-
+  function hasLevel(word) { return Object.prototype.hasOwnProperty.call(LEVELS, word); }
   function isUrl(s) { return /^(?:https?:\/\/|www\.)/i.test(s); }
   function isNumber(s) { return /^[+-]?(?:\d+(?:[.,]\d+)*)$/.test(s); }
 
@@ -124,8 +59,9 @@
   function lemmaOf(token) {
     const raw = String(token || '');
     if (!raw || isUrl(raw) || isNumber(raw)) return raw.toLowerCase();
-    for (const c of candidates(raw)) if (Object.prototype.hasOwnProperty.call(LEVELS, c)) return c;
-    return candidates(raw)[0] || raw.toLowerCase();
+    const cs = candidates(raw);
+    for (const c of cs) if (hasLevel(c)) return c;
+    return cs[0] || raw.toLowerCase();
   }
 
   function contextOverride(lemma, sentence) {
@@ -136,10 +72,8 @@
       }
       return { level: 3, reason: 'common-sense' };
     }
-    if (lemma === 'pose') {
-      if (/\bpose(?:s|d|ing)?\s+(?:a\s+|an\s+|the\s+)?(?:threat|risk|challenge|problem|question)s?\b/i.test(s)) {
-        return { level: 5, reason: 'sense:present-risk' };
-      }
+    if (lemma === 'pose' && /\bpose(?:s|d|ing)?\s+(?:a\s+|an\s+|the\s+)?(?:threat|risk|challenge|problem|question)s?\b/i.test(s)) {
+      return { level: 5, reason: 'sense:present-risk' };
     }
     return null;
   }
@@ -151,18 +85,14 @@
       return { level: 1, lemma: normalized.toLowerCase(), reason: isUrl(normalized) ? 'url' : 'nonlexical' };
     }
 
-    const properLike = /^[A-Z][A-Za-z'-]*$/.test(normalized) && !/^I$/.test(normalized);
     const lemma = lemmaOf(normalized);
     const override = contextOverride(lemma, sentence);
     if (override) return { level: override.level, lemma, reason: override.reason };
+    if (hasLevel(lemma)) return { level: LEVELS[lemma], lemma, reason: 'generated-lexicon' };
 
-    if (Object.prototype.hasOwnProperty.call(LEVELS, lemma)) {
-      return { level: LEVELS[lemma], lemma, reason: 'lexicon' };
-    }
+    const properLike = /^[A-Z][A-Za-z'-]*$/.test(normalized) && !/^I$/.test(normalized);
     if (properLike) return { level: 2, lemma, reason: 'proper-name-conservative' };
-    if (lemma.length >= 11 && ACADEMIC_SUFFIX.test(lemma)) {
-      return { level: 5, lemma, reason: 'academic-morphology' };
-    }
+    if (lemma.length >= 11 && ACADEMIC_SUFFIX.test(lemma)) return { level: 5, lemma, reason: 'academic-morphology' };
     return { level: 3, lemma, reason: 'unknown-conservative' };
   }
 
@@ -171,19 +101,18 @@
     return tokenize(s).map(t => ({ ...t, ...classifyToken(t.text, s) }));
   }
 
+  // Retained only until the obsolete marker prototype is removed in the color migration.
   function markSource(sentence, classified) {
     const s = String(sentence || '');
-    const items = Array.isArray(classified) ? classified.filter(x => x && x.level >= LEVEL_BOLD_MIN) : [];
+    const items = Array.isArray(classified) ? classified.filter(x => x && x.level >= LEVEL_HIGHLIGHT_MIN) : [];
     if (!items.length) return { text: s, ids: [] };
-    let cursor = 0;
-    let out = '';
+    let cursor = 0, out = '';
     const ids = [];
-    items.sort((a, b) => a.start - b.start).forEach((item) => {
+    items.sort((a, b) => a.start - b.start).forEach(item => {
       if (!(item.start >= cursor && item.end > item.start && item.end <= s.length)) return;
       const id = 'v' + ids.length;
       out += s.slice(cursor, item.start) + `⟦${id}⟧` + s.slice(item.start, item.end) + `⟦/${id}⟧`;
-      ids.push(id);
-      cursor = item.end;
+      ids.push(id); cursor = item.end;
     });
     out += s.slice(cursor);
     return { text: out, ids };
@@ -192,20 +121,14 @@
   function parseMarkedTranslation(input) {
     const s = String(input || '');
     const marker = /⟦(\/)?(v\d+)⟧/g;
-    const stack = [];
-    const spans = [];
-    const seen = new Set();
-    let plain = '';
-    let cursor = 0;
-    let m;
+    const stack = [], spans = [], seen = new Set();
+    let plain = '', cursor = 0, m;
     while ((m = marker.exec(s))) {
       plain += s.slice(cursor, m.index);
-      const closing = !!m[1];
-      const id = m[2];
+      const closing = !!m[1], id = m[2];
       if (!closing) {
         if (seen.has(id) || stack.some(x => x.id === id)) return null;
-        seen.add(id);
-        stack.push({ id, start: plain.length });
+        seen.add(id); stack.push({ id, start: plain.length });
       } else {
         const top = stack.pop();
         if (!top || top.id !== id) return null;
@@ -214,11 +137,13 @@
       cursor = marker.lastIndex;
     }
     plain += s.slice(cursor);
-    if (stack.length) return null;
-    if (/⟦\/?v\d+⟧/.test(plain)) return null;
+    if (stack.length || /⟦\/?v\d+⟧/.test(plain)) return null;
     spans.sort((a, b) => a.start - b.start);
     return { text: plain, spans };
   }
 
-  return Object.freeze({ LEVEL_BOLD_MIN, tokenize, classifyToken, classifySentence, markSource, parseMarkedTranslation });
+  return Object.freeze({
+    LEVEL_HIGHLIGHT_MIN, LEVEL_BOLD_MIN,
+    tokenize, classifyToken, classifySentence, markSource, parseMarkedTranslation
+  });
 });
