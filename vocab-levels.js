@@ -185,6 +185,7 @@
     const marker = /⟦(\/)?(v\d+)⟧/g;
     const stack = [];
     const spans = [];
+    const seen = new Set();
     let plain = '';
     let cursor = 0;
     let m;
@@ -193,7 +194,8 @@
       const closing = !!m[1];
       const id = m[2];
       if (!closing) {
-        if (stack.some(x => x.id === id)) return null;
+        if (seen.has(id) || stack.some(x => x.id === id)) return null;
+        seen.add(id);
         stack.push({ id, start: plain.length });
       } else {
         const top = stack.pop();
