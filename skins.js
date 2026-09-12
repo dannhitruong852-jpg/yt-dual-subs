@@ -116,3 +116,140 @@
     apply, set
   };
 })(typeof self !== "undefined" ? self : this);
+
+// User fork: the two subtitle lines have independent vertical positions.
+// skins.js is already loaded by the popup, so mounting the two sliders here
+// avoids changing the popup's large, otherwise-upstream HTML/JS files.
+(function () {
+  "use strict";
+
+  const ORIG_KEY = "origYpct";
+  const TRANS_KEY = "transYpct";
+  const DEFAULT_ORIG_Y = 12;
+  const DEFAULT_TRANS_Y = 88;
+
+  function clamp(value, fallback) {
+    let n = Number(value);
+    if (!Number.isFinite(n)) n = fallback;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  function makeRow(id, labelText, initial) {
+    const row = document.createElement("div");
+    row.className = "row ytds-independent-position-row";
+
+    const label = document.createElement("label");
+    label.setAttribute("for", id);
+    const text = document.createElement("span");
+    text.textContent = labelText;
+    const value = document.createElement("b");
+    value.id = id + "V";
+    value.textContent = initial + "%";
+    label.append(text, document.createTextNode(" "), value);
+
+    const range = document.createElement("input");
+    range.type = "range";
+    range.id = id;
+    range.min = "0";
+    range.max = "100";
+    range.step = "1";
+    range.value = String(initial);
+    range.setAttribute("aria-label", labelText);
+
+    row.append(label, range);
+    return { row, range, value };
+  }
+
+  function mountIndependentPositionControls() {
+    const position = document.getElementById("position");
+    if (!position || document.getElementById(ORIG_KEY)) return; // options page or already mounted
+
+    const card = position.closest(".card");
+    if (!card) return;
+
+    // These controls move the old single subtitle block. Keeping them visible
+    // would make three controls fight over one concept, so the fork replaces
+    // them with the two independent line sliders.
+    for (const id of ["order", "position", "rowGap"]) {
+      const el = document.getElementById(id);
+      const row = el && el.closest(".row");
+      if (row) row.hidden = true;
+    }
+
+    const orig = makeRow(ORIG_KEY, "英文位置", DEFAULT_ORIG_Y);
+    const trans = makeRow(TRANS_KEY, "中文位置", DEFAULT_TRANS_Y);
+    const selectText = document.getElementById("selectText");
+    const before = selectText ? selectText.closest("label") : null;
+    card.insertBefore(orig.row, before);
+    card.insertBefore(trans.row, before);
+
+    const hint = document.createElement("p");
+    hint.className = "tip ytds-position-hint";
+    hint.textContent = "0% = 视频顶部 · 100% = 视频底部";
+    card.insertBefore(hint, before);
+
+    // Make the existing popup preview obey the same independent geometry.
+    const style = document.createElement("style");
+    style.textContent = `
+      #prevOverlay { position:absolute !important; inset:0 !important; width:100% !important;
+        height:100% !important; transform:none !important; display:block !important; }
+      #prevOrig, #prevTrans { position:absolute !important; left:50% !important; width:max-content;
+        max-width:92% !important; transform:translate(-50%, -50%) !important; }
+      #prevOrig { top:var(--ytds-popup-orig-y, 12%) !important; }
+      #prevTrans { top:var(--ytds-popup-trans-y, 88%) !important; }
+    `;
+    document.head.appendChild(style);
+
+    let pendingTimer = null;
+    function paint(key, val) {
+      const pct = clamp(val, key === ORIG_KEY ? DEFAULT_ORIG_Y : DEFAULT_TRANS_Y);
+      document.documentElement.style.setProperty(
+        key === ORIG_KEY ? "--ytds-popup-orig-y" : "--ytds-popup-trans-y",
+        pct + "%"
+      );
+      return pct;
+    }
+    function save(key, value) {
+      try { chrome.storage.sync.set({ [key]: value }); } catch (_e) { /* popup closing */ }
+    }
+    function bind(control, key, fallback) {
+      const { range, value } = control;
+      const onInput = () => {
+        const pct = paint(key, range.value);
+        value.textContent = pct + "%";
+        if (pendingTimer) clearTimeout(pendingTimer);
+        pendingTimer = setTimeout(() => save(key, pct), 140);
+      };
+      range.addEventListener("input", onInput);
+      range.addEventListener("change", () => {
+        if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+        const pct = paint(key, range.value);
+        value.textContent = pct + "%";
+        save(key, pct);
+      });
+      const init = clamp(range.value, fallback);
+      paint(key, init);
+    }
+
+    bind(orig, ORIG_KEY, DEFAULT_ORIG_Y);
+    bind(trans, TRANS_KEY, DEFAULT_TRANS_Y);
+
+    try {
+      chrome.storage.sync.get(
+        { [ORIG_KEY]: DEFAULT_ORIG_Y, [TRANS_KEY]: DEFAULT_TRANS_Y },
+        (got) => {
+          const o = clamp(got && got[ORIG_KEY], DEFAULT_ORIG_Y);
+          const t = clamp(got && got[TRANS_KEY], DEFAULT_TRANS_Y);
+          orig.range.value = String(o); orig.value.textContent = o + "%"; paint(ORIG_KEY, o);
+          trans.range.value = String(t); trans.value.textContent = t + "%"; paint(TRANS_KEY, t);
+        }
+      );
+    } catch (_e) { /* defaults already painted */ }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mountIndependentPositionControls, { once: true });
+  } else {
+    mountIndependentPositionControls();
+  }
+})();

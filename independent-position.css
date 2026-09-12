@@ -1,0 +1,39 @@
+/* Independent subtitle placement.
+   The parent fills the video. Each subtitle line then owns its own Y position,
+   so moving one never pulls the other with it. */
+#ytds-overlay {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: auto !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  transform: none !important;
+  display: block !important;
+  transition: none !important;
+  pointer-events: none !important;
+}
+
+#ytds-overlay .ytds-line {
+  position: absolute !important;
+  left: 50% !important;
+  width: max-content;
+  max-width: 92% !important;
+  transform: translate(-50%, -50%) !important;
+  margin: 0 !important;
+}
+
+#ytds-overlay .ytds-orig {
+  top: var(--ytds-orig-y, 12%) !important;
+}
+
+#ytds-overlay .ytds-trans {
+  top: var(--ytds-trans-y, 88%) !important;
+}
+
+/* Whole-block dragging conflicts with independent per-line positions.
+   The two 0-100% sliders in the popup are now the single source of truth. */
+#ytds-overlay .ytds-handle {
+  display: none !important;
+}
