@@ -13,6 +13,7 @@
   const KEY = "vocabBoldEnabled";
   let enabled = true;
   let targetLang = "zh-CN";
+  let engine = "auto";
   let origEl = null;
   let transEl = null;
   let lineObserver = null;
@@ -57,13 +58,23 @@
     epoch++;
     currentAdvanced = [];
     lastAlignedText = "";
-    if (origEl && origEl.textContent !== origRaw) origEl.textContent = origRaw;
-    else if (origEl && origEl.querySelector(".ytds-vocab-bold")) origEl.textContent = origRaw;
-    if (transEl && transEl.textContent !== transRaw) transEl.textContent = transRaw;
-    else if (transEl && transEl.querySelector(".ytds-vocab-bold")) transEl.textContent = transRaw;
+    if (origEl && (origEl.textContent !== origRaw || origEl.querySelector(".ytds-vocab-bold"))) origEl.textContent = origRaw;
+    if (transEl && (transEl.textContent !== transRaw || transEl.querySelector(".ytds-vocab-bold"))) transEl.textContent = transRaw;
   }
 
-  function cacheKey(source) { return targetLang + "\n" + source; }
+  function currentVideoId() {
+    try {
+      const u = new URL(location.href);
+      const watch = u.searchParams.get("v");
+      if (watch) return watch;
+      const m = /^\/shorts\/([^/?#]+)/.exec(u.pathname);
+      return m ? m[1] : "";
+    } catch (_e) { return ""; }
+  }
+
+  function cacheKey(source) {
+    return [currentVideoId(), targetLang, engine, source].join("\n");
+  }
 
   function renderCachedTranslation(source) {
     if (!enabled || !transEl || !/^zh(?:-|$)/i.test(targetLang)) return false;
@@ -94,7 +105,7 @@
           alignCache.set(key, null); return;
         }
         alignCache.set(key, parsed);
-        if (!enabled || myEpoch !== epoch || origRaw !== source) return;
+        if (!enabled || myEpoch !== epoch || origRaw !== source || key !== cacheKey(source)) return;
         renderCachedTranslation(source);
       });
     } catch (_e) {
@@ -121,17 +132,26 @@
     scheduled = false;
     if (!origEl || !transEl || !origEl.isConnected || !transEl.isConnected) return;
 
+    const oldAlignedText = lastAlignedText;
     const observedOrig = origEl.textContent || "";
-    if (observedOrig !== origRaw) {
+    const sourceChanged = observedOrig !== origRaw;
+    if (sourceChanged) {
       origRaw = observedOrig;
       epoch++;
-      lastAlignedText = "";
       currentAdvanced = [];
     }
 
     const observedTrans = transEl.textContent || "";
-    const isOwnAligned = !!transEl.querySelector(".ytds-vocab-bold") && observedTrans === lastAlignedText;
+    const isOwnAligned = !!transEl.querySelector(".ytds-vocab-bold") && observedTrans === oldAlignedText;
     if (!isOwnAligned && observedTrans !== transRaw) transRaw = observedTrans;
+
+    // If YouTube/content.js advanced the English cue before it replaced the
+    // translated line, discard our old decorated Chinese DOM without mistaking
+    // it for the next cue's ordinary translation.
+    if (sourceChanged) {
+      if (isOwnAligned && transEl.textContent !== transRaw) transEl.textContent = transRaw;
+      lastAlignedText = "";
+    }
 
     if (!enabled) { restorePlain(); return; }
     applyOriginal(origRaw);
@@ -174,9 +194,10 @@
   window.addEventListener("pagehide", () => { clearInterval(finder); if (lineObserver) lineObserver.disconnect(); }, { once: true });
 
   try {
-    chrome.storage.sync.get({ [KEY]: true, targetLang: "zh-CN" }, got => {
+    chrome.storage.sync.get({ [KEY]: true, targetLang: "zh-CN", engine: "auto" }, got => {
       enabled = !got || got[KEY] !== false;
       targetLang = String((got && got.targetLang) || "zh-CN");
+      engine = String((got && got.engine) || "auto");
       if (!enabled) restorePlain(); else scheduleSync();
     });
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -189,6 +210,12 @@
       }
       if (changes.targetLang) {
         targetLang = String(changes.targetLang.newValue || "zh-CN");
+        epoch++;
+        lastAlignedText = "";
+        repaint = true;
+      }
+      if (changes.engine) {
+        engine = String(changes.engine.newValue || "auto");
         epoch++;
         lastAlignedText = "";
         repaint = true;
