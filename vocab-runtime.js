@@ -1,38 +1,33 @@
-// vocab-runtime.js — presentation-only Level-5+ emphasis for the English line.
-//
-// Safety rule: this layer never performs translation/network work and never
-// writes the translated line. Chinese alignment must be supplied by the normal
-// translation pipeline itself so vocabulary emphasis cannot increase request
-// volume or interfere with engine switching.
+// vocab-runtime.js — network-free Level-5+ vocabulary color highlighting.
+// Presentation only: no translation requests and no MutationObserver feedback loop.
 (() => {
   "use strict";
-
   if (window.__ytdsVocabRuntimeLoaded) return;
   window.__ytdsVocabRuntimeLoaded = true;
 
   const V = self.YTDS_VOCAB;
+  const DATA = self.YTDS_VOCAB_DATA || { zh: Object.create(null) };
   if (!V) return;
 
-  const KEY = "vocabBoldEnabled";
-  let enabled = true;
-  let origEl = null;
-  let lineObserver = null;
-  let origRaw = "";
-  let scheduled = false;
+  const DEFAULTS = Object.freeze({
+    vocabHighlightEnabled: true,
+    vocabOrigColor: "#FFD54F",
+    vocabTransColor: "#80DEEA",
+    targetLang: "zh-CN"
+  });
+  let settings = { ...DEFAULTS };
+  let origEl = null, transEl = null;
+  let sourceText = "", translatedText = "";
+  let lastSignature = "";
 
-  function addStyle() {
-    if (document.getElementById("ytds-vocab-style")) return;
-    const style = document.createElement("style");
-    style.id = "ytds-vocab-style";
-    style.textContent = ".ytds-vocab-bold{font-weight:700!important}";
-    (document.head || document.documentElement).appendChild(style);
+  function validColor(v, fallback) {
+    return /^#[0-9a-f]{6}$/i.test(String(v || "")) ? String(v) : fallback;
   }
 
-  function renderRanges(el, text, ranges) {
+  function renderRanges(el, text, ranges, color) {
     const s = String(text || "");
-    const safe = (Array.isArray(ranges) ? ranges : [])
-      .filter(r => r && Number.isInteger(r.start) && Number.isInteger(r.end) &&
-        r.start >= 0 && r.end > r.start && r.end <= s.length)
+    const safe = (ranges || [])
+      .filter(r => r && Number.isInteger(r.start) && Number.isInteger(r.end) && r.start >= 0 && r.end > r.start && r.end <= s.length)
       .sort((a, b) => a.start - b.start);
     const frag = document.createDocumentFragment();
     let cursor = 0;
@@ -40,7 +35,8 @@
       if (r.start < cursor) continue;
       if (r.start > cursor) frag.appendChild(document.createTextNode(s.slice(cursor, r.start)));
       const span = document.createElement("span");
-      span.className = "ytds-vocab-bold";
+      span.className = "ytds-vocab-highlight";
+      span.style.color = color;
       span.textContent = s.slice(r.start, r.end);
       frag.appendChild(span);
       cursor = r.end;
@@ -49,83 +45,99 @@
     el.replaceChildren(frag);
   }
 
-  function restorePlain() {
-    if (!origEl) return;
-    if (origEl.querySelector(".ytds-vocab-bold") || origEl.textContent !== origRaw) {
-      origEl.textContent = origRaw;
+  function chineseRanges(classified, text) {
+    if (!/^zh(?:-|$)/i.test(settings.targetLang)) return [];
+    const out = [], claimed = [];
+    for (const item of classified) {
+      if (!item || item.level < V.LEVEL_HIGHLIGHT_MIN) continue;
+      const candidates = (DATA.zh && DATA.zh[item.lemma]) || [];
+      const hits = [];
+      for (const surface of candidates) {
+        if (!surface) continue;
+        let from = 0, at;
+        while ((at = text.indexOf(surface, from)) >= 0) {
+          hits.push({ start: at, end: at + surface.length, lemma: item.lemma, surface });
+          from = at + surface.length;
+        }
+      }
+      const unique = hits.filter((h, i, a) => a.findIndex(x => x.start === h.start && x.end === h.end) === i);
+      if (unique.length !== 1) continue;
+      const hit = unique[0];
+      if (claimed.some(r => hit.start < r.end && hit.end > r.start)) continue;
+      claimed.push(hit); out.push(hit);
     }
+    return out.sort((a, b) => a.start - b.start);
   }
 
-  function applyOriginal(source) {
-    if (!origEl) return;
-    if (!enabled) { restorePlain(); return; }
-
-    const advanced = V.classifySentence(source)
-      .filter(x => x.level >= V.LEVEL_BOLD_MIN);
-    if (!advanced.length) {
-      if (origEl.querySelector(".ytds-vocab-bold")) origEl.textContent = source;
-      return;
-    }
-
-    // Idempotence is mandatory because renderRanges mutates a node watched by
-    // lineObserver. If the expected decorated DOM is already present, do not
-    // write it again or the observer would schedule another render forever.
-    const spans = origEl.querySelectorAll(".ytds-vocab-bold");
-    const alreadyRendered = origEl.textContent === source && spans.length === advanced.length &&
-      advanced.every((r, i) => spans[i] && spans[i].textContent === source.slice(r.start, r.end));
-    if (!alreadyRendered) renderRanges(origEl, source, advanced);
+  function plainRestore() {
+    if (origEl && origEl.querySelector(".ytds-vocab-highlight")) origEl.textContent = sourceText;
+    if (transEl && transEl.querySelector(".ytds-vocab-highlight")) transEl.textContent = translatedText;
   }
 
-  function syncLine() {
-    scheduled = false;
-    if (!origEl || !origEl.isConnected) return;
-
-    const observed = origEl.textContent || "";
-    if (observed !== origRaw) origRaw = observed;
-
-    if (!enabled) { restorePlain(); return; }
-    applyOriginal(origRaw);
-  }
-
-  function scheduleSync() {
-    if (scheduled) return;
-    scheduled = true;
-    queueMicrotask(syncLine);
-  }
-
-  function attach(overlay) {
-    const o = overlay && overlay.querySelector(".ytds-orig");
-    if (!o || o === origEl) return;
-    if (lineObserver) lineObserver.disconnect();
-    origEl = o;
-    origRaw = o.textContent || "";
-    lineObserver = new MutationObserver(scheduleSync);
-    lineObserver.observe(o, { childList: true, characterData: true, subtree: true });
-    scheduleSync();
-  }
-
-  function findOverlay() {
+  function repaint(force = false) {
     const overlay = document.getElementById("ytds-overlay");
-    if (overlay) attach(overlay);
+    const o = overlay && overlay.querySelector(".ytds-orig");
+    const t = overlay && overlay.querySelector(".ytds-trans");
+    if (!o || !t) return;
+    if (o !== origEl || t !== transEl) {
+      origEl = o; transEl = t; force = true;
+      sourceText = o.textContent || "";
+      translatedText = t.textContent || "";
+    }
+
+    const observedSource = o.textContent || "";
+    const observedTrans = t.textContent || "";
+    if (observedSource !== sourceText) { sourceText = observedSource; force = true; }
+    if (observedTrans !== translatedText) { translatedText = observedTrans; force = true; }
+
+    if (!settings.vocabHighlightEnabled) {
+      plainRestore(); lastSignature = "off:" + sourceText + "\n" + translatedText; return;
+    }
+
+    const classified = V.classifySentence(sourceText);
+    const english = classified.filter(x => x.level >= V.LEVEL_HIGHLIGHT_MIN);
+    const chinese = chineseRanges(classified, translatedText);
+    const signature = [sourceText, translatedText, settings.vocabOrigColor, settings.vocabTransColor,
+      english.map(x => `${x.start}:${x.end}`).join(','), chinese.map(x => `${x.start}:${x.end}`).join(',')].join("\n");
+
+    const missingEnglish = english.length && o.querySelectorAll(".ytds-vocab-highlight").length !== english.length;
+    const missingChinese = chinese.length && t.querySelectorAll(".ytds-vocab-highlight").length !== chinese.length;
+    if (!force && signature === lastSignature && !missingEnglish && !missingChinese) return;
+    lastSignature = signature;
+
+    if (english.length) renderRanges(o, sourceText, english, settings.vocabOrigColor);
+    else if (o.querySelector(".ytds-vocab-highlight")) o.textContent = sourceText;
+
+    if (chinese.length) renderRanges(t, translatedText, chinese, settings.vocabTransColor);
+    else if (t.querySelector(".ytds-vocab-highlight")) t.textContent = translatedText;
   }
 
-  addStyle();
-  findOverlay();
-  const finder = setInterval(findOverlay, 700);
-  window.addEventListener("pagehide", () => {
-    clearInterval(finder);
-    if (lineObserver) lineObserver.disconnect();
-  }, { once: true });
+  const timer = setInterval(() => repaint(false), 180);
+  window.addEventListener("pagehide", () => clearInterval(timer), { once: true });
 
   try {
-    chrome.storage.sync.get({ [KEY]: true }, got => {
-      enabled = !got || got[KEY] !== false;
-      if (!enabled) restorePlain(); else scheduleSync();
+    chrome.storage.sync.get({ ...DEFAULTS, vocabBoldEnabled: true }, got => {
+      const migratedEnabled = Object.prototype.hasOwnProperty.call(got || {}, "vocabHighlightEnabled")
+        ? got.vocabHighlightEnabled !== false : got.vocabBoldEnabled !== false;
+      settings = {
+        ...settings,
+        vocabHighlightEnabled: migratedEnabled,
+        vocabOrigColor: validColor(got && got.vocabOrigColor, DEFAULTS.vocabOrigColor),
+        vocabTransColor: validColor(got && got.vocabTransColor, DEFAULTS.vocabTransColor),
+        targetLang: String((got && got.targetLang) || DEFAULTS.targetLang)
+      };
+      repaint(true);
     });
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== "sync" || !changes[KEY]) return;
-      enabled = changes[KEY].newValue !== false;
-      if (!enabled) restorePlain(); else scheduleSync();
+      if (area !== "sync") return;
+      let changed = false;
+      if (changes.vocabHighlightEnabled) { settings.vocabHighlightEnabled = changes.vocabHighlightEnabled.newValue !== false; changed = true; }
+      // Compatibility while the old popup switch is being migrated.
+      if (changes.vocabBoldEnabled && !changes.vocabHighlightEnabled) { settings.vocabHighlightEnabled = changes.vocabBoldEnabled.newValue !== false; changed = true; }
+      if (changes.vocabOrigColor) { settings.vocabOrigColor = validColor(changes.vocabOrigColor.newValue, DEFAULTS.vocabOrigColor); changed = true; }
+      if (changes.vocabTransColor) { settings.vocabTransColor = validColor(changes.vocabTransColor.newValue, DEFAULTS.vocabTransColor); changed = true; }
+      if (changes.targetLang) { settings.targetLang = String(changes.targetLang.newValue || DEFAULTS.targetLang); changed = true; }
+      if (changed) repaint(true);
     });
-  } catch (_e) { scheduleSync(); }
+  } catch (_e) { repaint(true); }
 })();
