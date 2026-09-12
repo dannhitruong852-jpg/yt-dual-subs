@@ -3,6 +3,8 @@ name: Build Chrome and Safari packages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -20,9 +22,26 @@ jobs:
       - name: Run regression tests
         run: |
           node tests/independent-position.test.js
+          node tests/vocab-levels.test.js
+          node tests/vocab-bold-toggle.test.js
+          node tests/vocab-alignment.test.js
+          node tests/vocab-runtime-static.test.js
           node tests/browser-packages.test.mjs
+      - name: Syntax checks
+        run: |
+          node --check vocab-levels.js
+          node --check vocab-runtime.js
+          node --check content.js
+          node --check background.js
+          node --check skins.js
       - name: Build browser folders
         run: node scripts/build-browser-packages.mjs
+      - name: Verify vocabulary runtime is packaged
+        run: |
+          test -f dist/chrome/vocab-levels.js
+          test -f dist/chrome/vocab-runtime.js
+          test -f dist/safari/vocab-levels.js
+          test -f dist/safari/vocab-runtime.js
       - name: Create ZIP packages
         run: |
           (cd dist/chrome && zip -qr ../yt-dual-subs-chrome.zip .)
