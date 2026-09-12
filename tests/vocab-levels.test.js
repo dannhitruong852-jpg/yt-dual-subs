@@ -3,6 +3,20 @@ const V = require('../vocab-levels.js');
 
 assert.strictEqual(V.LEVEL_BOLD_MIN, 5);
 assert.ok(V.classifyToken('awkward', 'That was awkward.').level < 5);
+
+// Exact Level-5 calibration approved in the product discussion. These words
+// must be bolded; moving them below the threshold is a regression.
+for (const word of [
+  'consider', 'despite', 'determine', 'essential', 'estimate', 'eventually',
+  'frequent', 'identify', 'indicate', 'influence', 'likely', 'major', 'method',
+  'obvious', 'participate', 'particular', 'potential', 'previous', 'primary',
+  'provide', 'range', 'reduce', 'significant', 'similar', 'source', 'specific',
+  'standard', 'suggest', 'tend', 'various'
+]) {
+  assert.ok(V.classifyToken(word, `We use ${word} here.`).level >= 5,
+    `${word} must remain Level 5+`);
+}
+
 assert.ok(V.classifyToken('address', 'My address is on the form.').level < 5);
 assert.ok(V.classifyToken('address', 'We must address the structural problem.').level >= 5);
 assert.ok(V.classifyToken('exacerbate', 'This may exacerbate inequality.').level >= 5);
