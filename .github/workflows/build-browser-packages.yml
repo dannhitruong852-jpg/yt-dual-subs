@@ -23,7 +23,8 @@ jobs:
         run: |
           mkdir -p .cache/vocab
           curl -fsSL https://raw.githubusercontent.com/Maximax67/Words-CEFR-Dataset/main/datasets/word_list_cefr.csv -o .cache/vocab/word_list_cefr.csv
-          node scripts/build-vocab-data.mjs --cefr .cache/vocab/word_list_cefr.csv --out vocab-data.js
+          curl -fsSL https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv -o .cache/vocab/ecdict.csv
+          node scripts/build-vocab-data.mjs --cefr .cache/vocab/word_list_cefr.csv --ecdict .cache/vocab/ecdict.csv --out vocab-data.js
       - name: Run regression tests
         run: |
           node tests/independent-position.test.js
@@ -79,7 +80,8 @@ jobs:
         run: |
           mkdir -p .cache/vocab
           curl -fsSL https://raw.githubusercontent.com/Maximax67/Words-CEFR-Dataset/main/datasets/word_list_cefr.csv -o .cache/vocab/word_list_cefr.csv
-          node scripts/build-vocab-data.mjs --cefr .cache/vocab/word_list_cefr.csv --out vocab-data.js
+          curl -fsSL https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv -o .cache/vocab/ecdict.csv
+          node scripts/build-vocab-data.mjs --cefr .cache/vocab/word_list_cefr.csv --ecdict .cache/vocab/ecdict.csv --out vocab-data.js
       - name: Build Safari resources
         run: node scripts/build-browser-packages.mjs
       - name: Package macOS and iOS Safari projects
