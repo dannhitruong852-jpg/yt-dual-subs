@@ -64,6 +64,7 @@
         "fonts.js",
         "vocab-levels.js",
         "content.js",
+        "vocab-runtime.js",
         "independent-position.js"
       ],
       "css": [
