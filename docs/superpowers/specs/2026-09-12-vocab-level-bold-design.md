@@ -11,7 +11,15 @@ This feature must behave the same in Chrome and Safari and must not disturb the 
 
 ## Product rule
 
-The threshold is fixed at **Level 5+** for the first version. There is no settings UI in v1.
+The threshold is fixed at **Level 5+** for the first version.
+
+The popup includes one user-facing switch named **“高阶词汇加粗” / “Bold advanced vocabulary”**. The persisted setting is `vocabBoldEnabled` in `chrome.storage.sync` and defaults to `true`.
+
+- When `vocabBoldEnabled === true`, Level 5-9 English words are bolded and reliable corresponding Chinese spans are bolded.
+- When `vocabBoldEnabled === false`, all vocabulary emphasis is disabled. English and Chinese render exactly as ordinary subtitles.
+- The disabled state must bypass vocabulary classification work that is only needed for rendering emphasis and must not trigger any marker/alignment network request. Turning the switch off is therefore both a visual and a processing/network opt-out.
+- Toggling the setting applies live to the current YouTube tab through the extension's existing `chrome.storage.onChanged` path; no page reload is required.
+- The threshold itself is not user-adjustable in v1.
 
 The internal 1-9 scale is a project-specific learning scale, not an official exam scale. It is calibrated from multiple evidence types:
 
@@ -48,34 +56,29 @@ Examples:
 
 ## Vocabulary data architecture
 
-Add a self-contained runtime module, tentatively `vocab-levels.js`, loaded before `content.js`.
+Add a self-contained runtime module, `vocab-levels.js`, loaded before `content.js`.
 
-The runtime data should be generated from redistributable/open lexical sources rather than copied wholesale from the uploaded book. The book is used for calibration and test cases, not republished as a dictionary.
+The runtime data should be generated from redistributable/open lexical metadata rather than copied wholesale from the uploaded book. The book is used for calibration and test cases, not republished as a dictionary.
 
-Preferred source stack for v1:
+The data pipeline may use exam tags/frequency/lemma metadata from an open source such as ECDICT, but it must not ship third-party dictionary definitions or translations. Only the minimal derived metadata needed for classification may be bundled, together with required attribution/license notices.
 
-1. CEFR-J / Open Language Profiles for CEFR-labelled vocabulary.
-2. C1/C2 extension data where licensing permits redistribution with attribution.
-3. An openly redistributable general/native frequency source to correct CEFR-only misclassification of common spoken vocabulary.
-4. Small hand-curated context overrides for common polysemes that matter to the target learner.
-
-The generated runtime table should be compact and browser-friendly. The production extension should not depend on a server or an API for basic English level classification.
+The generated runtime table must be compact and browser-friendly. The production extension must not depend on a server or an API for basic English level classification.
 
 ## Tokenization and normalization
 
-Classification runs locally on the English subtitle text.
+Classification runs locally on the English subtitle text when `vocabBoldEnabled` is on.
 
 Required normalization:
 
 - preserve original surface text for rendering;
 - lowercase only for lookup;
 - strip surrounding punctuation;
-- handle common English inflections with lightweight deterministic lemmatization;
+- handle common English inflections with deterministic lemmatization;
 - preserve contractions correctly;
 - avoid highlighting pure numbers, URLs, obvious proper-name tokens, or punctuation;
 - support repeated words and multiple Level 5+ words in one subtitle.
 
-If a token cannot be classified with confidence, it should fail conservative rather than be automatically promoted to Level 9. Unknown proper names must not become bold simply because they are absent from the lexicon.
+If a token cannot be classified with confidence, it fails conservative rather than being automatically promoted to Level 9. Unknown proper names must not become bold simply because they are absent from the lexicon.
 
 ## Context-sensitive senses
 
@@ -87,41 +90,54 @@ The first version uses deterministic phrase/context overrides for high-value fam
 
 This is intentionally conservative. The extension must not pretend to perform perfect word-sense disambiguation locally.
 
+## Popup switch
+
+The new switch lives in the popup's Translation card so it is visible during normal subtitle setup. It reuses the extension's existing switch visual language.
+
+UI contract:
+
+- control id: `vocabBoldEnabled`
+- storage key: `vocabBoldEnabled`
+- default: `true`
+- simplified-Chinese label: `高阶词汇加粗`
+- English label: `Bold advanced vocabulary`
+- traditional-Chinese label: `高階詞彙加粗`
+
+`popup.js` adds the key to `DEFAULTS`, binds the control in `bindUI()`, and writes changes through the existing `setKey()` batching path. `content.js` adds the same default and responds live in `onStorageChanged`.
+
+The preview should make the switch observable: when on, one known Level 5+ sample token is bold in the English preview and the matching Chinese sample span is bold; when off, both preview lines are plain. Preview sample markup must be created safely with DOM nodes, not `innerHTML` from translated/external text.
+
 ## English rendering
 
 `content.js` currently writes subtitle text through `textContent`. The new rendering path must retain the same safety guarantees.
 
 Instead of setting `innerHTML`, the renderer constructs DOM text nodes and `<span class="ytds-vocab-bold">` nodes. This avoids HTML injection and keeps text selection/copy behavior predictable.
 
-English text is always bolded deterministically for classified Level 5+ tokens.
+When enabled, English text is bolded deterministically for classified Level 5+ tokens. CSS uses `font-weight: 700`.
 
-CSS uses `font-weight: 700` (or equivalent relative bolding compatible with the selected subtitle font).
+When disabled, `setOriginal()` follows the ordinary plain-text path and creates no vocabulary spans.
 
 ## Chinese counterpart alignment
 
 The requirement is not merely to bold the English word; the corresponding Chinese translated span should also be bold.
 
-The alignment design differs by translation path:
-
 ### GTX path
 
-When a sentence contains one or more Level 5+ English tokens, insert stable non-language marker tokens around only those source spans before sending the translation request. The marker format must be chosen and tested so Google translation preserves the boundaries without rendering the marker text.
+When an enabled sentence contains one or more Level 5+ English tokens, insert stable non-language marker tokens around only those source spans before the translation/alignment request. The marker format must be covered by parser tests and must never render visibly.
 
 The returned translation is parsed into plain Chinese text plus marked Chinese spans, then rendered as text nodes and bold spans.
 
-This should use the existing translation request rather than a second request whenever possible.
-
 ### BYO/LLM path
 
-Extend the controlled translation prompt/protocol so difficult-word markers survive translation or return explicit span metadata. The normal visible translation remains plain natural Chinese; only the renderer receives span metadata.
+Extend the controlled translation protocol so difficult-word markers survive translation or explicit span metadata is returned. The normal visible translation remains plain natural Chinese; only the renderer receives span metadata.
 
 The change must not expose API keys or alter existing key-storage rules.
 
 ### YouTube `tlang` path
 
-`tlang` does not accept modified source text, so it cannot provide direct word alignment. When a displayed sentence contains Level 5+ vocabulary, use the existing no-key GTX capability to obtain a marker-preserving aligned translation for that sentence and cache it. For those sentences, the aligned translation becomes the rendered Chinese line so the English and Chinese bold spans remain semantically paired.
+`tlang` does not accept modified source text, so it cannot provide direct word alignment. When an enabled displayed sentence contains Level 5+ vocabulary, use the existing no-key GTX capability to obtain marker-preserving aligned translation for that sentence and cache it. For those sentences, the aligned translation becomes the rendered Chinese line so English and Chinese bold spans remain semantically paired.
 
-This extra call is only made for subtitles containing Level 5+ vocabulary and only in the YouTube/Google translation path; it is not a general extra request for every subtitle.
+This extra call is only made for enabled subtitles containing Level 5+ vocabulary. If the feature switch is off, no alignment request is made.
 
 If alignment cannot be produced or parsed safely, render the ordinary translation unchanged and omit Chinese bolding for that sentence. Never guess a Chinese span aggressively.
 
@@ -133,21 +149,21 @@ Alignment/marked translations are cached by a stable key containing at least vid
 
 Do not trigger work on every animation frame. Classification happens when subtitle text changes. Network alignment happens at most once per unique qualifying sentence while cached.
 
-The feature must not materially increase cue-loop CPU use.
+When `vocabBoldEnabled` is false, the emphasis pipeline short-circuits before classification/alignment work.
 
 ## Interaction with selection/copy
 
 The extension already supports selectable subtitle text. Bold spans must not change copied text.
 
-Copying a subtitle should produce the same plain English/Chinese string as before, without marker characters, HTML, or duplicated whitespace.
+Copying a subtitle produces the same plain English/Chinese string as before, without marker characters, HTML, or duplicated whitespace.
 
 Pending-line logic that delays DOM updates while the user has an active selection must continue to work with structured rendering.
 
 ## TTS and export
 
-TTS must receive plain translation strings, never marker tokens or DOM markup.
+TTS receives plain translation strings, never marker tokens or DOM markup.
 
-SRT/export paths remain plain text and should not contain bold markup or marker characters.
+SRT/export paths remain plain text and must not contain bold markup or marker characters.
 
 The vocabulary emphasis is a presentation feature only.
 
@@ -155,7 +171,7 @@ The vocabulary emphasis is a presentation feature only.
 
 The vocabulary module must be pure browser JavaScript with no Chrome-only APIs. It is included in the shared extension source so both generated Chrome and Safari packages use the same classifier and renderer.
 
-Update the cross-browser packaging tests to verify that the vocabulary module is present in both packages and that Safari packaging does not drop it.
+Update cross-browser packaging tests to verify the vocabulary module is present in both packages and that Safari packaging does not drop it.
 
 ## Testing
 
@@ -169,15 +185,17 @@ Use TDD. Required regression coverage includes:
 6. Inflected forms resolve to the expected lemma.
 7. Proper names/URLs/numbers are not promoted as unknown vocabulary.
 8. Multiple difficult words in one sentence render all correct English spans.
-9. GTX/BYO marker parsing yields matching Chinese bold spans.
+9. Marker parsing yields matching Chinese bold spans.
 10. Broken/missing alignment fails closed: Chinese remains plain rather than bolding the wrong text.
 11. Text selection and copied text contain no markers or markup.
-12. Existing independent Chinese-above-English positioning regression still passes.
-13. Both Chrome and Safari package tests pass.
+12. `vocabBoldEnabled` defaults to true, persists in sync storage, and updates the current page live.
+13. With `vocabBoldEnabled=false`, both lines are plain and no marker/alignment request is initiated.
+14. Existing independent Chinese-above-English positioning regression still passes.
+15. Both Chrome and Safari package tests pass and include `vocab-levels.js`.
 
 ## Non-goals for v1
 
-- No user-adjustable threshold UI.
+- No user-adjustable numeric threshold; the threshold remains Level 5+.
 - No visible numeric level badges.
 - No color coding by level.
 - No dictionary popup.
@@ -186,4 +204,4 @@ Use TDD. Required regression coverage includes:
 
 ## Acceptance criteria
 
-A YouTube subtitle containing Level 5+ vocabulary displays those English words in bold. The Chinese line bolds the corresponding translated spans whenever a reliable marked alignment is available. Ordinary Level 1-4 words remain visually unchanged. The feature works in both Chrome and Safari packages, does not leak markers into TTS/export/copy, and fails conservatively when uncertain.
+With **高阶词汇加粗** enabled, a YouTube subtitle containing Level 5+ vocabulary displays those English words in bold and bolds corresponding Chinese translated spans whenever reliable alignment is available. Ordinary Level 1-4 words remain visually unchanged. With the switch disabled, both lines render without vocabulary bolding and the alignment pipeline performs no extra work or requests. The feature works in both Chrome and Safari packages, updates live when toggled, does not leak markers into TTS/export/copy, and fails conservatively when uncertain.
