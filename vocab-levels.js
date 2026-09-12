@@ -14,31 +14,40 @@
     for (const w of words.split(/\s+/)) if (w) LEVELS[w] = level;
   }
 
-  add(4, `awkward available average benefit challenge compare concern context
-    determine essential estimate eventually frequent identify indicate influence
-    likely major method obvious participate particular potential previous primary
-    provide range reduce significant similar source specific standard strategy
-    suggest various information education experience important different possible
-    relationship development environment government community technology
-    individual understand question language business university difficult
-    international organization conversation opportunity situation necessary
-    especially actually probably usually together although however therefore`);
+  // Level 4: common general-English vocabulary. The native-frequency correction
+  // matters here: a learner can find a word awkward without the word itself
+  // belonging to the advanced band.
+  add(4, `awkward achieve affect approach attitude benefit challenge compare concern
+    context decline establish evidence feature function increase issue maintain occur
+    require respond strategy available average career claim factor impact individual
+    involve information education experience important different possible relationship
+    development environment government community technology understand question language
+    business university difficult international organization conversation opportunity
+    situation necessary especially actually probably usually together although however
+    therefore`);
 
-  add(5, `abstract acknowledge adequate advocate allocate ambiguous arbitrary
-    coherent competent comprehensive conventional crucial derive diminish ethical
-    legitimate preliminary reluctant subtle sustain valid vulnerable compel
-    controversial distort reinforce accumulate adjacent analogy anticipate
-    apparent approximate attain attribute cease clarify coincide compile conceive
-    concurrent constrain contradict convert correlate decline deduce demonstrate
-    deviate discrete dispose diverse domestic eliminate emerge encounter enhance
-    equivalent explicit facilitate finite flexible framework fundamental generate
-    hypothesis illustrate imply incentive incidence inevitable infer inhibit
-    initial inspect integrate intermediate interpret intervene isolate justify
-    manipulate mature maximize minimize modify monitor objective obtain orient
-    persist predominant prohibit promote proportion prospect refine regulate
-    relevant rely restrict retain reveal revise rigid scope sector specify stable
-    statistic substitute subsequent sufficient suspend transform transmit trend
-    ultimate undergo uniform utilize visible welfare whereas`);
+  // Level 5 starts at the exact boundary approved for this product: upper-B2 /
+  // CET-6-core reading friction. These calibration anchors must stay >= 5.
+  add(5, `consider despite determine essential estimate eventually frequent identify
+    indicate influence likely major method obvious participate particular potential
+    previous primary provide range reduce significant similar source specific standard
+    suggest tend various abstract acknowledge adequate advocate allocate ambiguous
+    arbitrary coherent competent comprehensive conventional crucial derive diminish
+    ethical legitimate preliminary reluctant subtle sustain valid vulnerable compel
+    controversial distort reinforce accumulate adjacent analogy anticipate apparent
+    approximate attain attribute cease clarify coincide compile conceive concurrent
+    constrain contradict convert correlate deduce demonstrate deviate discrete dispose
+    diverse domestic eliminate emerge encounter enhance equivalent explicit facilitate
+    finite flexible framework fundamental generate hypothesis illustrate imply incentive
+    incidence inevitable infer inhibit initial inspect integrate intermediate interpret
+    intervene isolate justify manipulate mature maximize minimize modify monitor
+    objective obtain orient persist predominant prohibit promote proportion prospect
+    refine regulate relevant rely restrict retain reveal revise rigid scope sector
+    specify stable statistic substitute subsequent sufficient suspend transform
+    transmit trend ultimate undergo uniform utilize visible welfare whereas acquire
+    acquisition adverse adversity allegation alliance altitude ambassador amplify
+    analogy anxiety appeal applicant aspiration assault assemble assertion assumption
+    assurance astonishing astronomy attendance attentive atypical audit authorize await`);
 
   add(6, `exacerbate empirical intrinsic fluctuate mitigate paradigm plausible
     profound salient scrutinize undermine unprecedented ubiquitous nuanced
